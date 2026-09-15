@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 import "./App.css";
 
 type Page = "home" | "assessment" | "auth";
@@ -6,6 +6,85 @@ type Page = "home" | "assessment" | "auth";
 function App() {
   const [page, setPage] = useState<Page>("home");
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
+
+  // Authentication form states
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+
+  // Assessment state
+  const [symptoms, setSymptoms] = useState("");
+
+  const openAuth = (mode: "login" | "register") => {
+    setAuthMode(mode);
+    setAuthError("");
+    setAuthMessage("");
+    setPage("auth");
+  };
+
+  const handleAuthSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    setAuthError("");
+    setAuthMessage("");
+
+    // Basic validation
+    if (!email.trim() || !password.trim()) {
+      setAuthError("Please enter your email and password.");
+      return;
+    }
+
+    if (!email.includes("@")) {
+      setAuthError("Please enter a valid email address.");
+      return;
+    }
+
+    if (password.length < 6) {
+      setAuthError("Password must contain at least 6 characters.");
+      return;
+    }
+
+    // Register validation
+    if (authMode === "register") {
+      if (!name.trim()) {
+        setAuthError("Please enter your full name.");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setAuthError("Passwords do not match.");
+        return;
+      }
+
+      setAuthMessage(
+        "Account form validated successfully. Backend registration will be connected next."
+      );
+      return;
+    }
+
+    // Login validation
+    setAuthMessage(
+      "Login form validated successfully. Backend authentication will be connected next."
+    );
+  };
+
+  const handleAssessmentSubmit = () => {
+    if (!symptoms.trim()) {
+      alert("Please describe your symptoms before continuing.");
+      return;
+    }
+
+    alert(
+      "Your symptoms have been captured. NLP processing will be connected next."
+    );
+  };
+
+  // =========================
+  // AUTH PAGE
+  // =========================
 
   if (page === "auth") {
     return (
@@ -48,55 +127,84 @@ function App() {
                 : "Create an account to securely keep your assessments and personal history."}
             </p>
 
-            {authMode === "register" && (
+            <form onSubmit={handleAuthSubmit}>
+              {authMode === "register" && (
+                <div className="form-group">
+                  <label htmlFor="name">Full Name</label>
+
+                  <input
+                    id="name"
+                    type="text"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Enter your full name"
+                  />
+                </div>
+              )}
+
               <div className="form-group">
-                <label htmlFor="name">Full Name</label>
+                <label htmlFor="email">Email Address</label>
 
                 <input
-                  id="name"
-                  type="text"
-                  placeholder="Enter your full name"
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="Enter your email"
                 />
               </div>
-            )}
 
-            <div className="form-group">
-              <label htmlFor="email">Email Address</label>
-
-              <input
-                id="email"
-                type="email"
-                placeholder="Enter your email"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-
-              <input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-              />
-            </div>
-
-            {authMode === "register" && (
               <div className="form-group">
-                <label htmlFor="confirm-password">
-                  Confirm Password
-                </label>
+                <label htmlFor="password">Password</label>
 
                 <input
-                  id="confirm-password"
+                  id="password"
                   type="password"
-                  placeholder="Confirm your password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Enter your password"
                 />
               </div>
-            )}
 
-            <button className="primary-btn auth-btn">
-              {authMode === "login" ? "Sign In →" : "Create Account →"}
-            </button>
+              {authMode === "register" && (
+                <div className="form-group">
+                  <label htmlFor="confirm-password">
+                    Confirm Password
+                  </label>
+
+                  <input
+                    id="confirm-password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(event) =>
+                      setConfirmPassword(event.target.value)
+                    }
+                    placeholder="Confirm your password"
+                  />
+                </div>
+              )}
+
+              {authError && (
+                <div className="auth-error">
+                  {authError}
+                </div>
+              )}
+
+              {authMessage && (
+                <div className="auth-success">
+                  {authMessage}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="primary-btn auth-btn"
+              >
+                {authMode === "login"
+                  ? "Sign In →"
+                  : "Create Account →"}
+              </button>
+            </form>
 
             <div className="auth-switch">
               <span>
@@ -107,12 +215,16 @@ function App() {
 
               <button
                 onClick={() =>
-                  setAuthMode(
-                    authMode === "login" ? "register" : "login"
+                  openAuth(
+                    authMode === "login"
+                      ? "register"
+                      : "login"
                   )
                 }
               >
-                {authMode === "login" ? "Create account" : "Sign in"}
+                {authMode === "login"
+                  ? "Create account"
+                  : "Sign in"}
               </button>
             </div>
 
@@ -125,6 +237,10 @@ function App() {
       </div>
     );
   }
+
+  // =========================
+  // ASSESSMENT PAGE
+  // =========================
 
   if (page === "assessment") {
     return (
@@ -172,8 +288,10 @@ function App() {
 
             <textarea
               className="symptom-input"
-              placeholder="Example: Mujhe 3 din se fever hai aur raat ko khansi hoti hai..."
+              placeholder="Example: Mujhe 3 din se fever hai aur raat ko bahut khansi hoti hai..."
               rows={6}
+              value={symptoms}
+              onChange={(event) => setSymptoms(event.target.value)}
             />
 
             <div className="input-info">
@@ -181,7 +299,10 @@ function App() {
               <span>🔒 Private assessment</span>
             </div>
 
-            <button className="primary-btn assessment-btn">
+            <button
+              className="primary-btn assessment-btn"
+              onClick={handleAssessmentSubmit}
+            >
               Continue Assessment →
             </button>
 
@@ -196,9 +317,14 @@ function App() {
     );
   }
 
+  // =========================
+  // HOME PAGE
+  // =========================
+
   return (
     <div className="app">
       {/* Navbar */}
+
       <header className="navbar">
         <div className="brand">
           <div className="brand-logo">A</div>
@@ -215,10 +341,7 @@ function App() {
 
           <button
             className="nav-login-btn"
-            onClick={() => {
-              setAuthMode("login");
-              setPage("auth");
-            }}
+            onClick={() => openAuth("login")}
           >
             Login
           </button>
@@ -226,6 +349,7 @@ function App() {
       </header>
 
       {/* Hero */}
+
       <main className="hero">
         <section className="hero-content">
           <div className="badge">
@@ -278,6 +402,7 @@ function App() {
         </section>
 
         {/* AI Preview */}
+
         <section className="ai-preview">
           <div className="preview-glow"></div>
 
@@ -294,7 +419,9 @@ function App() {
             </div>
 
             <div className="chat-status">
-              <span>AI is ready to understand your symptoms</span>
+              <span>
+                AI is ready to understand your symptoms
+              </span>
             </div>
 
             <div className="chat-messages">
@@ -334,6 +461,7 @@ function App() {
       </main>
 
       {/* Quick Features */}
+
       <section className="quick-features" id="features">
         <div className="quick-feature">
           <span>01</span>
@@ -385,6 +513,7 @@ function App() {
       </section>
 
       {/* Features */}
+
       <section className="features-section">
         <div className="section-heading">
           <span>ONE PLATFORM</span>
@@ -463,6 +592,7 @@ function App() {
       </section>
 
       {/* How It Works */}
+
       <section className="how-section" id="how-it-works">
         <div className="section-heading">
           <span>HOW IT WORKS</span>
@@ -518,6 +648,7 @@ function App() {
       </section>
 
       {/* Safety */}
+
       <section className="safety-section">
         <div className="safety-content">
           <span className="safety-label">RESPONSIBLE AI</span>
@@ -559,6 +690,7 @@ function App() {
       </section>
 
       {/* Footer */}
+
       <footer className="footer">
         <div>
           <strong>AYUSHMED AI</strong>
