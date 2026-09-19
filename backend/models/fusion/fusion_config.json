@@ -1,0 +1,15 @@
+{
+    "old_model": {
+        "logistic_weight": 0.6,
+        "naive_bayes_weight": 0.4
+    },
+    "fusion": {
+        "old_model_weight": 0.2,
+        "pretrained_model_weight": 0.8
+    },
+    "validation_samples": 1000,
+    "common_classes": 100,
+    "pretrained_model": "Iloriayomide/Symptom_Prediction",
+    "selection_metric": "macro_f1",
+    "best_macro_f1": 0.9074269969389727
+}
