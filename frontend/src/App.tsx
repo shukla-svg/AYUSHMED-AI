@@ -3,20 +3,51 @@ import "./App.css";
 
 type Page = "home" | "assessment" | "auth";
 
+type Prediction = {
+  disease: string;
+  confidence: number;
+};
+
+type AnalysisResult = {
+  condition: string;
+  confidence: number;
+  matched_symptoms: string[];
+  top_predictions: Prediction[];
+  disclaimer: string;
+};
+
 function App() {
   const [page, setPage] = useState<Page>("home");
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
 
-  // Authentication form states
+  // ============================================================
+  // AUTHENTICATION FORM STATES
+  // ============================================================
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
 
-  // Assessment state
+  // ============================================================
+  // ASSESSMENT STATE
+  // ============================================================
+
   const [symptoms, setSymptoms] = useState("");
+
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const [analysisResult, setAnalysisResult] =
+    useState<AnalysisResult | null>(null);
+
+  const [analysisError, setAnalysisError] = useState("");
+
+  // ============================================================
+  // AUTH NAVIGATION
+  // ============================================================
 
   const openAuth = (mode: "login" | "register") => {
     setAuthMode(mode);
@@ -24,6 +55,10 @@ function App() {
     setAuthMessage("");
     setPage("auth");
   };
+
+  // ============================================================
+  // AUTH SUBMIT
+  // ============================================================
 
   const handleAuthSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -62,6 +97,7 @@ function App() {
       setAuthMessage(
         "Account form validated successfully. Backend registration will be connected next."
       );
+
       return;
     }
 
@@ -71,20 +107,76 @@ function App() {
     );
   };
 
-  const handleAssessmentSubmit = () => {
+  // ============================================================
+  // REAL SYMPTOM ANALYSIS
+  // ============================================================
+
+  const handleAssessmentSubmit = async () => {
     if (!symptoms.trim()) {
-      alert("Please describe your symptoms before continuing.");
+      setAnalysisError(
+        "Please describe your symptoms before continuing."
+      );
       return;
     }
 
-    alert(
-      "Your symptoms have been captured. NLP processing will be connected next."
-    );
+    setIsAnalyzing(true);
+    setAnalysisError("");
+    setAnalysisResult(null);
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/analyze-symptoms",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            symptoms: symptoms.trim(),
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Unable to analyze the symptoms."
+        );
+      }
+
+      // No symptom match
+      if (data.status === "no_match") {
+        setAnalysisError(
+          "I could not match your symptoms with the trained symptom vocabulary. Please describe your symptoms in a little more detail."
+        );
+        return;
+      }
+
+      // Successful prediction
+      setAnalysisResult({
+        condition: data.condition,
+        confidence: Number(data.confidence),
+        matched_symptoms: data.matched_symptoms || [],
+        top_predictions: data.top_predictions || [],
+        disclaimer:
+          data.disclaimer ||
+          "This is an AI-based informational screening-support result, not a medical diagnosis.",
+      });
+    } catch (error) {
+      console.error("Symptom analysis error:", error);
+
+      setAnalysisError(
+        "Unable to connect to AYUSHMED AI backend. Please make sure the backend server is running."
+      );
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
-  // =========================
+  // ============================================================
   // AUTH PAGE
-  // =========================
+  // ============================================================
 
   if (page === "auth") {
     return (
@@ -112,7 +204,9 @@ function App() {
             <div className="assessment-icon">✦</div>
 
             <span className="badge">
-              {authMode === "login" ? "WELCOME BACK" : "CREATE ACCOUNT"}
+              {authMode === "login"
+                ? "WELCOME BACK"
+                : "CREATE ACCOUNT"}
             </span>
 
             <h2>
@@ -136,7 +230,9 @@ function App() {
                     id="name"
                     type="text"
                     value={name}
-                    onChange={(event) => setName(event.target.value)}
+                    onChange={(event) =>
+                      setName(event.target.value)
+                    }
                     placeholder="Enter your full name"
                   />
                 </div>
@@ -149,7 +245,9 @@ function App() {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) =>
+                    setEmail(event.target.value)
+                  }
                   placeholder="Enter your email"
                 />
               </div>
@@ -161,7 +259,9 @@ function App() {
                   id="password"
                   type="password"
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) =>
+                    setPassword(event.target.value)
+                  }
                   placeholder="Enter your password"
                 />
               </div>
@@ -238,9 +338,9 @@ function App() {
     );
   }
 
-  // =========================
+  // ============================================================
   // ASSESSMENT PAGE
-  // =========================
+  // ============================================================
 
   if (page === "assessment") {
     return (
@@ -291,7 +391,10 @@ function App() {
               placeholder="Example: Mujhe 3 din se fever hai aur raat ko bahut khansi hoti hai..."
               rows={6}
               value={symptoms}
-              onChange={(event) => setSymptoms(event.target.value)}
+              onChange={(event) =>
+                setSymptoms(event.target.value)
+              }
+              disabled={isAnalyzing}
             />
 
             <div className="input-info">
@@ -299,12 +402,204 @@ function App() {
               <span>🔒 Private assessment</span>
             </div>
 
+            {analysisError && (
+              <div
+                style={{
+                  marginTop: "18px",
+                  padding: "14px 18px",
+                  borderRadius: "12px",
+                  background: "#fff4f4",
+                  border: "1px solid #f0caca",
+                  color: "#a33a3a",
+                  textAlign: "left",
+                  lineHeight: 1.5,
+                }}
+              >
+                {analysisError}
+              </div>
+            )}
+
             <button
               className="primary-btn assessment-btn"
               onClick={handleAssessmentSubmit}
+              disabled={isAnalyzing}
             >
-              Continue Assessment →
+              {isAnalyzing
+                ? "Analyzing symptoms..."
+                : "Continue Assessment →"}
             </button>
+
+            {/* ====================================================
+                REAL AI RESULT
+            ==================================================== */}
+
+            {analysisResult && (
+              <div
+                style={{
+                  marginTop: "28px",
+                  padding: "26px",
+                  borderRadius: "18px",
+                  background: "#f8fffe",
+                  border: "1px solid #d4eeeb",
+                  textAlign: "left",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    letterSpacing: "1.5px",
+                    color: "#078f87",
+                    marginBottom: "10px",
+                  }}
+                >
+                  AI SCREENING RESULT
+                </div>
+
+                <h3
+                  style={{
+                    margin: "0 0 18px",
+                    fontSize: "24px",
+                    color: "#111",
+                  }}
+                >
+                  Possible condition:{" "}
+                  <span style={{ color: "#07968d" }}>
+                    {analysisResult.condition}
+                  </span>
+                </h3>
+
+                {/* Confidence */}
+
+                <div
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: "12px",
+                    background: "#eaf8f6",
+                    marginBottom: "20px",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: "13px",
+                      color: "#557",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Model confidence
+                  </span>
+
+                  <strong
+                    style={{
+                      fontSize: "26px",
+                      color: "#078f87",
+                    }}
+                  >
+                    {analysisResult.confidence.toFixed(2)}%
+                  </strong>
+                </div>
+
+                {/* Matched Symptoms */}
+
+                <div style={{ marginBottom: "20px" }}>
+                  <h4
+                    style={{
+                      marginBottom: "10px",
+                      color: "#222",
+                    }}
+                  >
+                    Symptoms understood
+                  </h4>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                    }}
+                  >
+                    {analysisResult.matched_symptoms.map(
+                      (symptom) => (
+                        <span
+                          className="symptom-tag"
+                          key={symptom}
+                          style={{
+                            padding: "7px 12px",
+                            borderRadius: "20px",
+                            background: "#e5f7f5",
+                            color: "#087d76",
+                            fontSize: "13px",
+                          }}
+                        >
+                          ✓ {symptom}
+                        </span>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* Top Predictions */}
+
+                <div>
+                  <h4
+                    style={{
+                      marginBottom: "10px",
+                      color: "#222",
+                    }}
+                  >
+                    Other possible conditions
+                  </h4>
+
+                  <div>
+                    {analysisResult.top_predictions.map(
+                      (prediction, index) => (
+                        <div
+                          key={`${prediction.disease}-${index}`}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "11px 0",
+                            borderBottom:
+                              index <
+                              analysisResult.top_predictions.length - 1
+                                ? "1px solid #e7eeee"
+                                : "none",
+                          }}
+                        >
+                          <span>
+                            {index + 1}. {prediction.disease}
+                          </span>
+
+                          <strong>
+                            {Number(
+                              prediction.confidence
+                            ).toFixed(2)}
+                            %
+                          </strong>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* Disclaimer */}
+
+                <div
+                  style={{
+                    marginTop: "20px",
+                    paddingTop: "16px",
+                    borderTop: "1px solid #dcebea",
+                    fontSize: "12px",
+                    lineHeight: 1.5,
+                    color: "#687878",
+                  }}
+                >
+                  ⚠️ {analysisResult.disclaimer}
+                </div>
+              </div>
+            )}
 
             <div className="disclaimer">
               <span>✓</span>
@@ -317,9 +612,9 @@ function App() {
     );
   }
 
-  // =========================
+  // ============================================================
   // HOME PAGE
-  // =========================
+  // ============================================================
 
   return (
     <div className="app">
@@ -337,6 +632,7 @@ function App() {
 
         <nav className="nav-links">
           <a href="#features">Features</a>
+
           <a href="#how-it-works">How it works</a>
 
           <button
@@ -468,6 +764,7 @@ function App() {
 
           <div>
             <strong>Natural Conversation</strong>
+
             <p>
               Talk normally instead of selecting symptoms from
               lists.
@@ -480,6 +777,7 @@ function App() {
 
           <div>
             <strong>Smart Follow-ups</strong>
+
             <p>
               Relevant questions based on what you tell the
               system.
@@ -492,6 +790,7 @@ function App() {
 
           <div>
             <strong>Safety Layer</strong>
+
             <p>
               Potential red flags are considered before
               screening.
@@ -504,6 +803,7 @@ function App() {
 
           <div>
             <strong>Personal History</strong>
+
             <p>
               Previous assessments can be available to your
               account.
@@ -651,7 +951,9 @@ function App() {
 
       <section className="safety-section">
         <div className="safety-content">
-          <span className="safety-label">RESPONSIBLE AI</span>
+          <span className="safety-label">
+            RESPONSIBLE AI
+          </span>
 
           <h2>
             Technology can assist.
