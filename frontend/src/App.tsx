@@ -35,6 +35,10 @@ type AnalysisResult = {
   top_predictions: Prediction[];
 
   disclaimer: string;
+  health_response: string;
+  is_emergency: boolean;
+  safety_message: string;
+  priority: string;
 
 };
 
@@ -126,7 +130,7 @@ const normalizeAnalysisResult = (data: unknown): AnalysisResult => {
 
 
 
-  if (!response || response.status !== "success") {
+  if (!response || (response.status !== "success" && response.status !== "urgent")) {
 
     throw new Error(
 
@@ -2770,3 +2774,4 @@ function App() {
 
 
 export default App;
+

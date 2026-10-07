@@ -1,4 +1,4 @@
-import os
+﻿import os
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -6,6 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
+
+from ai.safety_layer import build_safety_context
+from ai.response_builder import build_health_response
 
 from symptom_rules import (
     extract_symptoms,
@@ -298,79 +301,108 @@ def predict_disease_endpoint(
 # ============================================================
 
 @app.post("/analyze-symptoms")
-def analyze_symptoms(
-    request: SymptomRequest
-):
-
+def analyze_symptoms(request: SymptomRequest):
     if not request.symptoms.strip():
         raise HTTPException(
             status_code=400,
             detail="Please provide symptoms."
         )
 
-    # --------------------------------------------------------
-    # MATCH SYMPTOMS
-    # --------------------------------------------------------
+    # SAFETY CHECK
+    safety = build_safety_context(request.symptoms)
 
+    # MATCH SYMPTOMS
     matched_symptoms = extract_symptoms(
         request.symptoms,
         available_symptoms
     )
 
-    # --------------------------------------------------------
-    # FUSION MODEL
-    # --------------------------------------------------------
-
-    if FUSION_LOADED and matched_symptoms:
-
-        predictions = predict_disease(
-            matched_symptoms
+    # EMERGENCY — deterministic response
+    if safety.get("is_emergency"):
+        health_response = build_health_response(
+            request.symptoms,
+            matched_symptoms,
+            {},
+            safety
         )
 
         return {
-            "status": "success",
-            "model": "fusion",
+            "status": "urgent",
+            "model": "safety_layer",
             "input": request.symptoms,
             "matched_symptoms": matched_symptoms,
-            "condition": predictions[0][
-                "disease"
-            ],
-            "confidence": predictions[0][
-                "confidence"
-            ],
-            "top_predictions": predictions,
-            "fusion": {
-                "old_model_weight": 0.2,
-                "pretrained_model_weight": 0.8,
-            },
+            "condition": None,
+            "confidence": None,
+            "top_predictions": [],
+            "safety": safety,
+            "health_response": health_response,
             "disclaimer": (
-                "This is an AI-based informational "
-                "screening-support result, not a "
-                "medical diagnosis."
+                "This system does not provide medical diagnosis "
+                "or replace professional medical care."
             ),
         }
 
-    # --------------------------------------------------------
-    # RULE-BASED FALLBACK
-    # --------------------------------------------------------
+    # FUSION MODEL
+    if FUSION_LOADED and matched_symptoms:
+        predictions = predict_disease(matched_symptoms)
 
+        if predictions:
+            top_prediction = predictions[0]
+            condition = top_prediction.get("disease")
+            confidence = top_prediction.get("confidence")
+
+            health_response = build_health_response(
+                request.symptoms,
+                matched_symptoms,
+                {
+                    "condition": condition,
+                    "confidence": confidence,
+                },
+                safety
+            )
+
+            return {
+                "status": "success",
+                "model": "fusion",
+                "input": request.symptoms,
+                "matched_symptoms": matched_symptoms,
+                "condition": condition,
+                "confidence": confidence,
+                "top_predictions": predictions,
+                "fusion": {
+                    "old_model_weight": 0.2,
+                    "pretrained_model_weight": 0.8,
+                },
+                "safety": safety,
+                "health_response": health_response,
+                "disclaimer": (
+                    "This is an AI-based informational "
+                    "screening-support result, not a "
+                    "medical diagnosis."
+                ),
+            }
+
+    # RULE-BASED FALLBACK
     rule_result = analyze_rule_based_symptoms(
         matched_symptoms
+    )
+
+    health_response = build_health_response(
+        request.symptoms,
+        matched_symptoms,
+        {},
+        safety
     )
 
     return {
         "status": rule_result["status"],
         "input": request.symptoms,
-        "matched_symptoms": (
-            rule_result["matched_symptoms"]
-        ),
-        "possible_categories": (
-            rule_result["possible_categories"]
-        ),
+        "matched_symptoms": rule_result["matched_symptoms"],
+        "possible_categories": rule_result["possible_categories"],
+        "safety": safety,
+        "health_response": health_response,
         "disclaimer": rule_result["disclaimer"],
     }
-
-
 # ============================================================
 # MENTAL HEALTH QUESTIONS
 # ============================================================
@@ -515,3 +547,6 @@ def login_user(
             "email": user.email,
         },
     }
+
+
+
