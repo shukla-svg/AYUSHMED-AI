@@ -1,0 +1,102 @@
+﻿[
+  {
+    "id": "common_cold",
+    "condition": "Common Cold",
+    "keywords": ["cold", "runny nose", "sneezing", "cough", "sore throat", "blocked nose"],
+    "summary": "Common cold is usually associated with symptoms such as a runny or blocked nose, sneezing, cough and sore throat.",
+    "self_care": "Rest, adequate fluids and monitoring symptoms can be helpful. Avoid assuming that an antibiotic is needed without medical advice.",
+    "seek_care": "Seek medical care if symptoms become severe, persist unusually long, or breathing difficulty or chest pain develops.",
+    "red_flags": ["severe breathing difficulty", "chest pain", "loss of consciousness"],
+    "source": "AYUSHMED AI local reference"
+  },
+  {
+    "id": "flu_like_illness",
+    "condition": "Flu-like Illness",
+    "keywords": ["fever", "cough", "headache", "body ache", "fatigue", "chills"],
+    "summary": "Flu-like illness can involve fever, cough, headache, body aches, chills and fatigue.",
+    "self_care": "Rest, maintain fluid intake and monitor how symptoms change.",
+    "seek_care": "Seek medical care if symptoms are severe, worsening, or associated with breathing difficulty, chest pain or confusion.",
+    "red_flags": ["severe breathing difficulty", "chest pain", "severe confusion"],
+    "source": "AYUSHMED AI local reference"
+  },
+  {
+    "id": "headache",
+    "condition": "Headache",
+    "keywords": ["headache", "head pain", "migraine", "pressure in head"],
+    "summary": "Headache can have many possible causes, and symptom screening alone cannot determine the exact cause.",
+    "self_care": "Rest in a comfortable environment, maintain hydration and monitor the pattern and severity of the headache.",
+    "seek_care": "Seek urgent medical care for a sudden severe headache, headache with loss of consciousness, severe confusion, seizure or stroke-like symptoms.",
+    "red_flags": ["loss of consciousness", "severe confusion", "seizure", "stroke warning signs"],
+    "source": "AYUSHMED AI local reference"
+  },
+  {
+    "id": "cough",
+    "condition": "Cough",
+    "keywords": ["cough", "dry cough", "wet cough", "phlegm"],
+    "summary": "Cough can occur with several respiratory conditions and its cause cannot be confirmed from the symptom alone.",
+    "self_care": "Maintain adequate fluids and monitor duration, severity and associated symptoms.",
+    "seek_care": "Seek medical care if cough is severe, worsening, associated with breathing difficulty or chest pain, or accompanied by significant bleeding.",
+    "red_flags": ["severe breathing difficulty", "chest pain", "severe bleeding"],
+    "source": "AYUSHMED AI local reference"
+  },
+  {
+    "id": "sore_throat",
+    "condition": "Sore Throat",
+    "keywords": ["sore throat", "throat pain", "painful swallowing", "difficulty swallowing"],
+    "summary": "Sore throat can occur with infections and other conditions. The exact cause requires clinical assessment when symptoms are concerning.",
+    "self_care": "Rest, maintain fluids and monitor whether symptoms are improving or worsening.",
+    "seek_care": "Seek medical care for severe swallowing or breathing difficulty, significant worsening, or other concerning symptoms.",
+    "red_flags": ["severe breathing difficulty", "difficulty swallowing"],
+    "source": "AYUSHMED AI local reference"
+  },
+  {
+    "id": "fever",
+    "condition": "Fever",
+    "keywords": ["fever", "high temperature", "temperature", "bukhar"],
+    "summary": "Fever is a symptom rather than a diagnosis and can occur with many different conditions.",
+    "self_care": "Rest, maintain adequate fluids and monitor temperature and other symptoms.",
+    "seek_care": "Seek medical advice when fever is severe, persistent, worsening, or occurs with serious symptoms such as breathing difficulty, confusion or seizure.",
+    "red_flags": ["severe breathing difficulty", "severe confusion", "seizure"],
+    "source": "AYUSHMED AI local reference"
+  },
+  {
+    "id": "breathing_difficulty",
+    "condition": "Breathing Difficulty",
+    "keywords": ["shortness of breath", "breathing difficulty", "difficulty breathing", "saans lene mein dikkat"],
+    "summary": "Breathing difficulty can have many causes and may require prompt medical assessment depending on severity.",
+    "self_care": "Do not rely on an AI screening result when breathing difficulty is severe or rapidly worsening.",
+    "seek_care": "Severe or rapidly worsening breathing difficulty should be treated as an urgent medical concern.",
+    "red_flags": ["severe breathing difficulty", "chest pain", "loss of consciousness"],
+    "source": "AYUSHMED AI local reference"
+  },
+  {
+    "id": "chest_pain",
+    "condition": "Chest Pain",
+    "keywords": ["chest pain", "chest pressure", "chest tightness", "seene mein dard"],
+    "summary": "Chest pain can have many possible causes and cannot be safely diagnosed by symptom screening alone.",
+    "self_care": "Do not use an AI screening result to rule out a serious cause of chest pain.",
+    "seek_care": "New, severe or unexplained chest pain, especially with breathing difficulty, fainting or other serious symptoms, needs urgent medical assessment.",
+    "red_flags": ["chest pain", "severe breathing difficulty", "loss of consciousness"],
+    "source": "AYUSHMED AI local reference"
+  },
+  {
+    "id": "stomach_pain",
+    "condition": "Stomach Pain",
+    "keywords": ["stomach pain", "abdominal pain", "pet dard", "belly pain"],
+    "summary": "Stomach or abdominal pain can have many causes, and symptom screening alone cannot determine the cause.",
+    "self_care": "Monitor severity and associated symptoms and maintain adequate fluids when appropriate.",
+    "seek_care": "Seek medical care for severe or worsening abdominal pain, significant bleeding, fainting or other serious symptoms.",
+    "red_flags": ["severe bleeding", "loss of consciousness"],
+    "source": "AYUSHMED AI local reference"
+  },
+  {
+    "id": "fatigue",
+    "condition": "Fatigue",
+    "keywords": ["fatigue", "tiredness", "weakness", "low energy", "thakan"],
+    "summary": "Fatigue or low energy can have many possible causes and should be interpreted together with other symptoms and duration.",
+    "self_care": "Prioritize rest, adequate fluids and regular meals while monitoring whether fatigue improves.",
+    "seek_care": "Seek medical advice if fatigue is persistent, severe, worsening, or associated with other concerning symptoms.",
+    "red_flags": ["loss of consciousness", "severe confusion", "severe breathing difficulty"],
+    "source": "AYUSHMED AI local reference"
+  }
+]

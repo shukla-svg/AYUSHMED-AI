@@ -1,4 +1,4 @@
-﻿def build_health_response(
+def build_health_response(
     user_message: str,
     symptoms=None,
     prediction=None,
@@ -47,7 +47,7 @@
         confidence_text = "available"
 
     response = (
-        f"Screening result mein **{condition}** ki possibility sabse zyada "
+        f"Screening result mein {condition} ki possibility sabse zyada "
         f"aayi hai ({confidence_text}). Ye confirmed diagnosis nahi hai."
     )
 
@@ -62,3 +62,4 @@
     )
 
     return response
+

@@ -108,13 +108,15 @@ device = torch.device(
 )
 
 tokenizer = AutoTokenizer.from_pretrained(
-    PRETRAINED_MODEL
+    PRETRAINED_MODEL,
+    local_files_only=True,
 )
 
 pretrained_model = (
     AutoModelForSequenceClassification
     .from_pretrained(
-        PRETRAINED_MODEL
+        PRETRAINED_MODEL,
+        local_files_only=True,
     )
 )
 

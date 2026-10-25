@@ -15,8 +15,12 @@ RED_FLAG_PATTERNS = {
         r"\bsevere breathing\b",
         r"\bbreathing difficulty\b",
         r"\bbreathing problem\b",
-        r"\bsaans lene mein dikkat\b",
-        r"\bsaans lene me dikkat\b",
+        r"\bshortness of breath\b",
+        r"\bdifficulty breathing\b",
+        r"\bsaans lene mein(?: bahut| zyada| kaafi)? dikkat(?: ho rahi hai| ho raha hai)?\b",
+        r"\bsaans lene mein bahut dikkat\b",
+        r"\bsaans lene me(?: bahut| zyada| kaafi)? dikkat(?: ho rahi hai| ho raha hai)?\b",
+        r"\bsaans lene me bahut dikkat\b",
         r"\bsaans nahi aa\b",
         r"\bsaans nahin aa\b",
     ],
@@ -54,6 +58,17 @@ RED_FLAG_PATTERNS = {
         r"\bbolne me dikkat\b",
         r"\bachanak haath pair kamzor\b",
         r"\bachanak weakness\b",
+    ],
+    "self-harm or suicide risk": [
+        r"\bsuicid(?:e|al)\b",
+        r"\bkill myself\b",
+        r"\bend my life\b",
+        r"\bhurt myself\b",
+        r"\bself harm\b",
+        r"\bkhud ko (?:nuksan|harm)\b",
+        r"\bjaan dene\b",
+        r"\bmarna chahta(?: hoon| hu| hun)?\b",
+        r"\bmarna chahti(?: hoon| hu)?\b",
     ],
 }
 
@@ -120,3 +135,4 @@ def build_safety_context(user_text: str) -> Dict:
             "detect nahi hua. Yeh emergency ko rule out nahi karta."
         ),
     }
+

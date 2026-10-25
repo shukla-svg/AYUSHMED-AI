@@ -1,0 +1,11 @@
+fastapi==0.142.2
+uvicorn[standard]
+SQLAlchemy==2.0.54
+passlib[bcrypt]==1.7.4
+scikit-learn==1.9.1
+ollama
+joblib
+numpy
+pandas
+torch
+transformers

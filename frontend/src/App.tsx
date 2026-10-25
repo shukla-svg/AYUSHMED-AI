@@ -4,7 +4,7 @@ import "./App.css";
 
 
 
-type Page = "home" | "assessment" | "mental" | "auth";
+type Page = "home" | "assessment" | "chat" | "mental" | "auth";
 
 type AuthUser = {
   id: number;
@@ -239,6 +239,22 @@ const normalizeAnalysisResult = (data: unknown): AnalysisResult => {
     matched_symptoms: matchedSymptoms,
 
     top_predictions: topPredictions,
+  health_response:
+    typeof response.health_response === "string" ? response.health_response : "",
+  is_emergency:
+    response.safety && typeof response.safety === "object"
+      ? Boolean((response.safety as Record<string, unknown>).is_emergency)
+      : false,
+  safety_message:
+    response.safety && typeof response.safety === "object" &&
+    typeof (response.safety as Record<string, unknown>).message === "string"
+      ? String((response.safety as Record<string, unknown>).message)
+      : "",
+  priority:
+    response.safety && typeof response.safety === "object" &&
+    typeof (response.safety as Record<string, unknown>).priority === "string"
+      ? String((response.safety as Record<string, unknown>).priority)
+      : "routine",
 
     disclaimer:
 
@@ -327,6 +343,17 @@ function App() {
     useState<AnalysisResult | null>(null);
 
   const [analysisError, setAnalysisError] = useState("");
+
+  const [assistantInput, setAssistantInput] = useState("");
+  const [assistantMessages, setAssistantMessages] = useState<ChatMessage[]>([
+    {
+      role: "ai",
+      text: "Namaste! Apne symptoms Hinglish ya English mein batayein. Main emergency warning signs check karke screening-support information dunga/dungi, diagnosis nahi.",
+    },
+  ]);
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantError, setAssistantError] = useState("");
+  const [assistantStopped, setAssistantStopped] = useState(false);
 
   // ============================================================
 
@@ -471,6 +498,70 @@ function App() {
     setPage("home");
     setAuthMessage("");
     setAuthError("");
+  };
+
+  const resetAssistantChat = () => {
+    setAssistantInput("");
+    setAssistantError("");
+    setAssistantStopped(false);
+    setAssistantMessages([
+      {
+        role: "ai",
+        text: "Namaste! Apne symptoms Hinglish ya English mein batayein. Main emergency warning signs check karke screening-support information dunga/dungi, diagnosis nahi.",
+      },
+    ]);
+  };
+
+  const sendAssistantMessage = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const message = assistantInput.trim();
+    if (!message || assistantLoading || assistantStopped) return;
+
+    const history = assistantMessages.slice(-12).map((item) => ({
+      role: item.role === "ai" ? "assistant" : "user",
+      text: item.text,
+    }));
+
+    setAssistantError("");
+    setAssistantInput("");
+    setAssistantMessages((current) => [
+      ...current,
+      { role: "user", text: message },
+    ]);
+    setAssistantLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, history }),
+      });
+      const data: unknown = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(getResponseMessage(data) || "Unable to continue the health chat.");
+      }
+
+      const record = asRecord(data);
+      const reply = typeof record?.message === "string" ? record.message.trim() : "";
+
+      if (!reply) {
+        throw new Error("The health assistant did not return a response.");
+      }
+
+      setAssistantMessages((current) => [
+        ...current,
+        { role: "ai", text: reply },
+      ]);
+      setAssistantStopped(record?.should_stop === true);
+    } catch (error) {
+      setAssistantError(
+        error instanceof Error ? error.message : "Unable to continue the health chat."
+      );
+    } finally {
+      setAssistantLoading(false);
+    }
   };
 
   const openMentalHealth = async () => {
@@ -1287,6 +1378,142 @@ function App() {
 
 
 
+  // HEALTH CHAT PAGE
+
+  // ============================================================
+
+  if (page === "chat") {
+    return (
+      <div className="app">
+        <header className="navbar">
+          <div className="brand">
+            <div className="brand-logo">A</div>
+            <div>
+              <h1>AYUSHMED AI</h1>
+              <p>AI Health Screening Assistant</p>
+            </div>
+          </div>
+          <button className="nav-link-btn" onClick={() => setPage("home")}>
+            Home
+          </button>
+        </header>
+
+        <main className="assessment-page">
+          <button className="back-btn" onClick={() => setPage("home")}>
+            ← Back to Home
+          </button>
+
+          <section className="assessment-card">
+            <div className="assessment-icon">💬</div>
+            <span className="badge">HINGLISH HEALTH CHAT</span>
+            <h2>Tell us what you are experiencing.</h2>
+            <p>
+              Share symptoms naturally in Hinglish or English. This is
+              screening-support information, not a diagnosis or a prescription.
+            </p>
+
+            <div
+              aria-live="polite"
+              style={{
+                marginTop: "24px",
+                display: "grid",
+                gap: "12px",
+                maxHeight: "420px",
+                overflowY: "auto",
+                padding: "4px",
+                textAlign: "left",
+              }}
+            >
+              {assistantMessages.map((item, index) => (
+                <div
+                  key={`${item.role}-${index}-${item.text}`}
+                  style={{
+                    justifySelf: item.role === "user" ? "end" : "start",
+                    maxWidth: "86%",
+                    padding: "12px 14px",
+                    borderRadius: "14px",
+                    lineHeight: 1.5,
+                    background: item.role === "user" ? "#087d76" : "#f1f8f7",
+                    color: item.role === "user" ? "#fff" : "#1f3d3a",
+                    border: item.role === "user" ? "none" : "1px solid #d4eeeb",
+                  }}
+                >
+                  {item.text}
+                </div>
+              ))}
+              {assistantLoading && (
+                <div
+                  style={{
+                    justifySelf: "start",
+                    padding: "12px 14px",
+                    borderRadius: "14px",
+                    background: "#f1f8f7",
+                    color: "#1f3d3a",
+                  }}
+                >
+                  Checking your message safely…
+                </div>
+              )}
+            </div>
+
+            {assistantStopped && (
+              <div className="auth-error" style={{ marginTop: "18px", textAlign: "left" }}>
+                The chat has paused because your message may need urgent care. Please seek local emergency help now; start a new chat only when it is safe to do so.
+              </div>
+            )}
+
+            {assistantError && (
+              <div className="auth-error" style={{ marginTop: "18px" }}>
+                {assistantError}
+              </div>
+            )}
+
+            <form onSubmit={sendAssistantMessage} style={{ marginTop: "22px" }}>
+              <label htmlFor="assistant-message" className="sr-only">
+                Describe your symptoms
+              </label>
+              <textarea
+                id="assistant-message"
+                value={assistantInput}
+                onChange={(event) => setAssistantInput(event.target.value)}
+                placeholder="Example: Mujhe 2 din se bukhar aur khansi hai."
+                rows={4}
+                maxLength={1500}
+                disabled={assistantLoading || assistantStopped}
+              />
+              <button
+                className="primary-btn assessment-btn"
+                type="submit"
+                disabled={!assistantInput.trim() || assistantLoading || assistantStopped}
+                style={{ marginTop: "14px" }}
+              >
+                {assistantLoading ? "Replying…" : "Send message →"}
+              </button>
+            </form>
+
+            <button
+              className="nav-link-btn"
+              type="button"
+              onClick={resetAssistantChat}
+              style={{ marginTop: "14px" }}
+            >
+              Start a new chat
+            </button>
+
+            <div className="disclaimer" style={{ marginTop: "22px" }}>
+              <span>⚠️</span>
+              If you have chest pain, severe breathing difficulty, fainting,
+              seizures, stroke-like symptoms, or feel at risk of self-harm,
+              seek emergency help now.
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  // ============================================================
+
   // ASSESSMENT PAGE
 
   // ============================================================
@@ -1620,6 +1847,40 @@ function App() {
                 >
 
                   AI SCREENING RESULT
+
+            {analysisResult.is_emergency ? (
+              <div style={{
+                padding: "16px",
+                borderRadius: "12px",
+                background: "#fff1f1",
+                border: "1px solid #e5484d",
+                marginBottom: "18px",
+                color: "#8f1d1d",
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: "6px" }}>
+                  ?? Urgent Medical Attention Recommended
+                </div>
+                <div style={{ lineHeight: 1.6 }}>
+                  {analysisResult.health_response || analysisResult.safety_message}
+                </div>
+              </div>
+            ) : analysisResult.health_response ? (
+              <div style={{
+                padding: "16px",
+                borderRadius: "12px",
+                background: "#f5fbfa",
+                border: "1px solid #b9e5df",
+                marginBottom: "18px",
+                color: "#1f3d3a",
+                lineHeight: 1.6,
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: "6px" }}>
+                  AI Health Guidance
+                </div>
+                <div>{analysisResult.health_response}</div>
+              </div>
+            ) : null}
+
 
                 </div>
 
@@ -2100,6 +2361,14 @@ function App() {
 
             </button>
 
+            <button
+              type="button"
+              className="text-btn"
+              onClick={() => setPage("chat")}
+            >
+              Chat in Hinglish →
+            </button>
+
 
 
             <a className="text-btn" href="#how-it-works">
@@ -2238,7 +2507,7 @@ function App() {
 
               <button
 
-                onClick={() => setPage("assessment")}
+                onClick={() => setPage("chat")}
 
               >
 

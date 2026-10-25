@@ -1,14 +1,16 @@
 ﻿import os
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 
 from ai.safety_layer import build_safety_context
 from ai.response_builder import build_health_response
+from ai.rag.retriever import retrieve_knowledge
+from ai.ollama_service import generate_health_response
 
 from symptom_rules import (
     extract_symptoms,
@@ -88,8 +90,11 @@ pwd_context = CryptContext(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -100,7 +105,19 @@ app.add_middleware(
 # ============================================================
 
 class SymptomRequest(BaseModel):
-    symptoms: str
+    symptoms: str = Field(max_length=3000)
+
+
+class ChatHistoryItem(BaseModel):
+    """One prior user/assistant exchange supplied by the local UI."""
+
+    role: Literal["user", "assistant"]
+    text: str = Field(min_length=1, max_length=1500)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(max_length=1500)
+    history: list[ChatHistoryItem] = Field(default_factory=list, max_length=12)
 
 
 class HealthRequest(BaseModel):
@@ -193,10 +210,16 @@ def predict_disease(
     if not matched_symptoms:
         return []
 
-    predictions = run_fusion_prediction(
-        matched_symptoms,
-        top_k=3
-    )
+    try:
+        predictions = run_fusion_prediction(
+            matched_symptoms,
+            top_k=3
+        )
+    except Exception as error:
+        # The screening model is optional support.  A model failure must not
+        # prevent deterministic safety and rule-based responses.
+        print("WARNING: Fusion prediction failed:", error)
+        return []
 
     return predictions
 
@@ -215,6 +238,28 @@ def predict_disease_endpoint(
             status_code=400,
             detail="Please provide symptoms."
         )
+
+    safety = build_safety_context(request.symptoms)
+
+    if safety.get("is_emergency"):
+        return {
+            "status": "urgent",
+            "model": "safety_layer",
+            "input": request.symptoms,
+            "matched_symptoms": [],
+            "top_predictions": [],
+            "safety": safety,
+            "health_response": build_health_response(
+                request.symptoms,
+                [],
+                {},
+                safety,
+            ),
+            "disclaimer": (
+                "This system does not provide medical diagnosis "
+                "or replace professional medical care."
+            ),
+        }
 
     # --------------------------------------------------------
     # EXTRACT DATASET SYMPTOMS
@@ -257,23 +302,24 @@ def predict_disease_endpoint(
             matched_symptoms
         )
 
-        return {
-            "status": "success",
-            "model": "fusion",
-            "input": request.symptoms,
-            "matched_symptoms": matched_symptoms,
-            "top_prediction": predictions[0],
-            "top_predictions": predictions,
-            "fusion": {
-                "old_model_weight": 0.2,
-                "pretrained_model_weight": 0.8,
-            },
-            "disclaimer": (
-                "This is an AI-based informational "
-                "screening-support result, not a "
-                "medical diagnosis."
-            ),
-        }
+        if predictions:
+            return {
+                "status": "success",
+                "model": "fusion",
+                "input": request.symptoms,
+                "matched_symptoms": matched_symptoms,
+                "top_prediction": predictions[0],
+                "top_predictions": predictions,
+                "fusion": {
+                    "old_model_weight": 0.2,
+                    "pretrained_model_weight": 0.8,
+                },
+                "disclaimer": (
+                    "This is an AI-based informational "
+                    "screening-support result, not a "
+                    "medical diagnosis."
+                ),
+            }
 
     # --------------------------------------------------------
     # RULE-BASED FALLBACK
@@ -293,6 +339,138 @@ def predict_disease_endpoint(
             rule_result["possible_categories"]
         ),
         "disclaimer": rule_result["disclaimer"],
+    }
+
+
+# ============================================================
+# CONVERSATIONAL AI CHAT ENDPOINT
+# ============================================================
+
+@app.post("/chat")
+def chat_endpoint(request: ChatRequest):
+
+    message = request.message.strip()
+
+    if not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide a message."
+        )
+
+    # --------------------------------------------------------
+    # BUILD CONVERSATION CONTEXT
+    # --------------------------------------------------------
+
+    history_text = []
+
+    # Only user history is used as medical context.  Assistant text can include
+    # red-flag terms as a question and must never trigger a later false alert.
+    for item in request.history:
+        role = item.role
+        text = item.text.strip()
+
+        if role == "user" and text:
+            history_text.append(text)
+
+    combined_input = "\n".join([*history_text, message])
+
+    # --------------------------------------------------------
+    # SAFETY CHECK — ALWAYS FIRST
+    # --------------------------------------------------------
+
+    # Safety must reflect the current message.  Historic red flags are context,
+    # not proof that an emergency is still present now.
+    safety = build_safety_context(message)
+
+    if safety.get("is_emergency"):
+        health_response = build_health_response(
+            message,
+            [],
+            {},
+            safety
+        )
+
+        return {
+            "status": "urgent",
+            "model": "safety_layer",
+            "message": health_response,
+            "safety": safety,
+            "should_stop": True,
+            "disclaimer": (
+                "This system does not provide medical diagnosis "
+                "or replace professional medical care."
+            ),
+        }
+
+    # --------------------------------------------------------
+    # SYMPTOM EXTRACTION
+    # --------------------------------------------------------
+
+    matched_symptoms = extract_symptoms(
+        combined_input,
+        available_symptoms
+    )
+
+    # --------------------------------------------------------
+    # FUSION SCREENING
+    # --------------------------------------------------------
+
+    predictions = []
+
+    if FUSION_LOADED and matched_symptoms:
+        predictions = predict_disease(
+            matched_symptoms
+        )
+
+    # --------------------------------------------------------
+    # LOCAL RAG
+    # --------------------------------------------------------
+
+    rag_context = retrieve_knowledge(
+        combined_input,
+        top_k=3
+    )
+
+    # --------------------------------------------------------
+    # OLLAMA RESPONSE
+    # --------------------------------------------------------
+
+    top_prediction = (
+        predictions[0]
+        if predictions
+        else None
+    )
+
+    application_data = {
+        "prediction": (
+            {
+                "condition": top_prediction.get("disease"),
+                "confidence": top_prediction.get("confidence"),
+            }
+            if top_prediction
+            else None
+        ),
+        "matched_symptoms": matched_symptoms,
+        "safety": safety,
+        "rag_context": rag_context,
+    }
+
+    health_response = generate_health_response(combined_input, application_data)
+
+    return {
+        "status": "success",
+        "model": "chat+fusion+rag+ollama",
+        "message": health_response,
+        "matched_symptoms": matched_symptoms,
+        "top_predictions": predictions[:3],
+        "rag_context": rag_context,
+        "safety": safety,
+        "should_stop": False,
+        "disclaimer": (
+            "This is an AI-based informational "
+            "screening-support response, not a "
+            "medical diagnosis."
+        ),
     }
 
 
@@ -342,7 +520,7 @@ def analyze_symptoms(request: SymptomRequest):
             ),
         }
 
-    # FUSION MODEL
+    # FUSION MODEL + LOCAL RAG + OLLAMA
     if FUSION_LOADED and matched_symptoms:
         predictions = predict_disease(matched_symptoms)
 
@@ -351,19 +529,35 @@ def analyze_symptoms(request: SymptomRequest):
             condition = top_prediction.get("disease")
             confidence = top_prediction.get("confidence")
 
-            health_response = build_health_response(
+            # ------------------------------------------------
+            # LOCAL RAG
+            # ------------------------------------------------
+            rag_context = retrieve_knowledge(
                 request.symptoms,
-                matched_symptoms,
-                {
+                top_k=3
+            )
+
+            # ------------------------------------------------
+            # OLLAMA RESPONSE GENERATION
+            # ------------------------------------------------
+            application_data = {
+                "prediction": {
                     "condition": condition,
                     "confidence": confidence,
                 },
-                safety
+                "matched_symptoms": matched_symptoms,
+                "safety": safety,
+                "rag_context": rag_context,
+            }
+
+            health_response = generate_health_response(
+                request.symptoms,
+                application_data
             )
 
             return {
                 "status": "success",
-                "model": "fusion",
+                "model": "fusion+rag+ollama",
                 "input": request.symptoms,
                 "matched_symptoms": matched_symptoms,
                 "condition": condition,
@@ -373,6 +567,7 @@ def analyze_symptoms(request: SymptomRequest):
                     "old_model_weight": 0.2,
                     "pretrained_model_weight": 0.8,
                 },
+                "rag_context": rag_context,
                 "safety": safety,
                 "health_response": health_response,
                 "disclaimer": (
@@ -547,6 +742,10 @@ def login_user(
             "email": user.email,
         },
     }
+
+
+
+
 
 
 

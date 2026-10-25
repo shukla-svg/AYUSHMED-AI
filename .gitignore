@@ -5,3 +5,25 @@ backend/**pycache**/
 
 # Local database
 *.db
+
+# Virtual environments and generated files
+.venv/
+venv/
+**/venv/
+**/__pycache__/
+*.py[cod]
+*.backup
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Frontend generated files
+node_modules/
+dist/
