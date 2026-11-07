@@ -1,61 +1,39 @@
-﻿import os
+﻿
+# ============================================================
+# IMPORTS
+# ============================================================
+
+import os
 from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 
+# AI MODULES
 from ai.safety_layer import build_safety_context
 from ai.response_builder import build_health_response
 from ai.rag.retriever import retrieve_knowledge
 from ai.ollama_service import generate_health_response
 
+# SYMPTOM ANALYSIS
 from symptom_rules import (
     extract_symptoms,
     analyze_rule_based_symptoms,
 )
 
+# MENTAL HEALTH
 from mental_health import (
     calculate_mental_health_score,
     get_mental_health_questions,
 )
 
+# DATABASE
 from database import Base, engine, get_db
 from database_models import User
-
-
-# ============================================================
-# FUSION MODEL
-# ============================================================
-
-try:
-    from predict_fusion import (
-        predict_fusion as run_fusion_prediction,
-        get_fusion_info,
-        available_symptoms,
-    )
-
-    FUSION_LOADED = True
-
-    print("Fusion model loaded successfully!")
-    print(
-        "Available symptoms:",
-        len(available_symptoms)
-    )
-
-except Exception as e:
-    FUSION_LOADED = False
-
-    run_fusion_prediction = None
-    get_fusion_info = None
-    available_symptoms = []
-
-    print(
-        "WARNING: Fusion model could not be loaded."
-    )
-    print("Error:", e)
 
 
 # ============================================================
@@ -73,19 +51,7 @@ app = FastAPI(
 
 
 # ============================================================
-# DATABASE
-# ============================================================
-
-Base.metadata.create_all(bind=engine)
-
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto"
-)
-
-
-# ============================================================
-# CORS
+# CORS CONFIGURATION
 # ============================================================
 
 app.add_middleware(
@@ -93,11 +59,56 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
     ],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# ============================================================
+# PASSWORD SECURITY
+# ============================================================
+
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+)
+
+
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
+
+Base.metadata.create_all(bind=engine)
+
+
+# ============================================================
+# FUSION MODEL
+# ============================================================
+
+try:
+    from predict_fusion import (
+        predict_fusion as run_fusion_prediction,
+        get_fusion_info,
+        available_symptoms,
+    )
+
+    FUSION_LOADED = True
+
+    print("Fusion model loaded successfully!")
+    print("Available symptoms:", len(available_symptoms))
+
+except Exception as e:
+
+    FUSION_LOADED = False
+
+    run_fusion_prediction = None
+    get_fusion_info = None
+    available_symptoms = []
+
+    print("WARNING: Fusion model could not be loaded.")
+    print("Error:", e)
 
 
 # ============================================================
@@ -109,15 +120,16 @@ class SymptomRequest(BaseModel):
 
 
 class ChatHistoryItem(BaseModel):
-    """One prior user/assistant exchange supplied by the local UI."""
-
     role: Literal["user", "assistant"]
     text: str = Field(min_length=1, max_length=1500)
 
 
 class ChatRequest(BaseModel):
     message: str = Field(max_length=1500)
-    history: list[ChatHistoryItem] = Field(default_factory=list, max_length=12)
+    history: list[ChatHistoryItem] = Field(
+        default_factory=list,
+        max_length=12,
+    )
 
 
 class HealthRequest(BaseModel):
@@ -157,7 +169,10 @@ def root():
         "fusion_model_loaded": FUSION_LOADED,
         "model": fusion_info,
         "features": [
-            "Disease Symptom Assessment",
+            "Natural AI Chatbot",
+            "Fusion Disease Screening",
+            "RAG Knowledge Retrieval",
+            "Ollama LLM",
             "Mental Health Assessment",
             "User Registration",
             "User Login",
@@ -175,37 +190,18 @@ def health_check():
     return {
         "status": "healthy",
         "fusion_model_loaded": FUSION_LOADED,
-        "symptom_features": len(
-            available_symptoms
-        ),
+        "symptom_features": len(available_symptoms),
     }
 
 
 # ============================================================
-# FUSION PREDICTION
+# FUSION PREDICTION HELPER
 # ============================================================
 
-def predict_disease(
-    matched_symptoms: list[str]
-):
-    """
-    Final AYUSHMED AI prediction.
-
-    Fusion configuration:
-
-        Old model       = 20%
-        Pretrained      = 80%
-
-    Old model internally:
-
-        Logistic        = 60%
-        Naive Bayes     = 40%
-    """
+def predict_disease(matched_symptoms: list[str]):
 
     if not FUSION_LOADED:
-        raise RuntimeError(
-            "Fusion model is not loaded."
-        )
+        raise RuntimeError("Fusion model is not loaded.")
 
     if not matched_symptoms:
         return []
@@ -213,15 +209,15 @@ def predict_disease(
     try:
         predictions = run_fusion_prediction(
             matched_symptoms,
-            top_k=3
+            top_k=3,
         )
+
+        return predictions
+
     except Exception as error:
-        # The screening model is optional support.  A model failure must not
-        # prevent deterministic safety and rule-based responses.
+
         print("WARNING: Fusion prediction failed:", error)
         return []
-
-    return predictions
 
 
 # ============================================================
@@ -229,19 +225,18 @@ def predict_disease(
 # ============================================================
 
 @app.post("/predict-disease")
-def predict_disease_endpoint(
-    request: SymptomRequest
-):
+def predict_disease_endpoint(request: SymptomRequest):
 
     if not request.symptoms.strip():
         raise HTTPException(
             status_code=400,
-            detail="Please provide symptoms."
+            detail="Please provide symptoms.",
         )
 
     safety = build_safety_context(request.symptoms)
 
     if safety.get("is_emergency"):
+
         return {
             "status": "urgent",
             "model": "safety_layer",
@@ -261,18 +256,10 @@ def predict_disease_endpoint(
             ),
         }
 
-    # --------------------------------------------------------
-    # EXTRACT DATASET SYMPTOMS
-    # --------------------------------------------------------
-
     matched_symptoms = extract_symptoms(
         request.symptoms,
-        available_symptoms
+        available_symptoms,
     )
-
-    # --------------------------------------------------------
-    # NO MATCH
-    # --------------------------------------------------------
 
     if not matched_symptoms:
 
@@ -286,23 +273,17 @@ def predict_disease_endpoint(
             "matched_symptoms": [],
             "predictions": [],
             "disclaimer": (
-                "This system provides informational "
-                "screening support and is not a "
-                "medical diagnosis."
+                "This system provides informational screening "
+                "support and is not a medical diagnosis."
             ),
         }
 
-    # --------------------------------------------------------
-    # FUSION PREDICTION
-    # --------------------------------------------------------
-
     if FUSION_LOADED:
 
-        predictions = predict_disease(
-            matched_symptoms
-        )
+        predictions = predict_disease(matched_symptoms)
 
         if predictions:
+
             return {
                 "status": "success",
                 "model": "fusion",
@@ -316,14 +297,9 @@ def predict_disease_endpoint(
                 },
                 "disclaimer": (
                     "This is an AI-based informational "
-                    "screening-support result, not a "
-                    "medical diagnosis."
+                    "screening-support result, not a medical diagnosis."
                 ),
             }
-
-    # --------------------------------------------------------
-    # RULE-BASED FALLBACK
-    # --------------------------------------------------------
 
     rule_result = analyze_rule_based_symptoms(
         matched_symptoms
@@ -332,18 +308,14 @@ def predict_disease_endpoint(
     return {
         "status": rule_result["status"],
         "input": request.symptoms,
-        "matched_symptoms": (
-            rule_result["matched_symptoms"]
-        ),
-        "possible_categories": (
-            rule_result["possible_categories"]
-        ),
+        "matched_symptoms": rule_result["matched_symptoms"],
+        "possible_categories": rule_result["possible_categories"],
         "disclaimer": rule_result["disclaimer"],
     }
 
 
 # ============================================================
-# CONVERSATIONAL AI CHAT ENDPOINT
+# NATURAL CONVERSATIONAL AI CHATBOT
 # ============================================================
 
 @app.post("/chat")
@@ -354,40 +326,40 @@ def chat_endpoint(request: ChatRequest):
     if not message:
         raise HTTPException(
             status_code=400,
-            detail="Please provide a message."
+            detail="Please provide a message.",
         )
 
     # --------------------------------------------------------
-    # BUILD CONVERSATION CONTEXT
+    # CONVERSATION HISTORY
     # --------------------------------------------------------
 
     history_text = []
 
-    # Only user history is used as medical context.  Assistant text can include
-    # red-flag terms as a question and must never trigger a later false alert.
     for item in request.history:
-        role = item.role
-        text = item.text.strip()
 
-        if role == "user" and text:
-            history_text.append(text)
+        if item.role == "user":
+            text = item.text.strip()
 
-    combined_input = "\n".join([*history_text, message])
+            if text:
+                history_text.append(text)
+
+    combined_input = "\n".join(
+        [*history_text, message]
+    )
 
     # --------------------------------------------------------
-    # SAFETY CHECK — ALWAYS FIRST
+    # SAFETY CHECK
     # --------------------------------------------------------
 
-    # Safety must reflect the current message.  Historic red flags are context,
-    # not proof that an emergency is still present now.
     safety = build_safety_context(message)
 
     if safety.get("is_emergency"):
+
         health_response = build_health_response(
             message,
             [],
             {},
-            safety
+            safety,
         )
 
         return {
@@ -408,19 +380,26 @@ def chat_endpoint(request: ChatRequest):
 
     matched_symptoms = extract_symptoms(
         combined_input,
-        available_symptoms
+        available_symptoms,
     )
 
     # --------------------------------------------------------
-    # FUSION SCREENING
+    # FUSION PREDICTION
     # --------------------------------------------------------
 
     predictions = []
 
     if FUSION_LOADED and matched_symptoms:
+
         predictions = predict_disease(
             matched_symptoms
         )
+
+    top_prediction = (
+        predictions[0]
+        if predictions
+        else None
+    )
 
     # --------------------------------------------------------
     # LOCAL RAG
@@ -428,18 +407,12 @@ def chat_endpoint(request: ChatRequest):
 
     rag_context = retrieve_knowledge(
         combined_input,
-        top_k=3
+        top_k=3,
     )
 
     # --------------------------------------------------------
-    # OLLAMA RESPONSE
+    # APPLICATION CONTEXT
     # --------------------------------------------------------
-
-    top_prediction = (
-        predictions[0]
-        if predictions
-        else None
-    )
 
     application_data = {
         "prediction": (
@@ -455,7 +428,32 @@ def chat_endpoint(request: ChatRequest):
         "rag_context": rag_context,
     }
 
-    health_response = generate_health_response(combined_input, application_data)
+    # --------------------------------------------------------
+    # OLLAMA RESPONSE
+    # --------------------------------------------------------
+
+    try:
+
+        health_response = generate_health_response(
+            combined_input,
+            application_data,
+        )
+
+    except Exception as error:
+
+        print("Ollama response error:", error)
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Local AI service is currently unavailable. "
+                "Please check whether Ollama is running."
+            ),
+        )
+
+    # --------------------------------------------------------
+    # FINAL CHAT RESPONSE
+    # --------------------------------------------------------
 
     return {
         "status": "success",
@@ -468,8 +466,7 @@ def chat_endpoint(request: ChatRequest):
         "should_stop": False,
         "disclaimer": (
             "This is an AI-based informational "
-            "screening-support response, not a "
-            "medical diagnosis."
+            "screening-support response, not a medical diagnosis."
         ),
     }
 
@@ -480,28 +477,30 @@ def chat_endpoint(request: ChatRequest):
 
 @app.post("/analyze-symptoms")
 def analyze_symptoms(request: SymptomRequest):
+
     if not request.symptoms.strip():
+
         raise HTTPException(
             status_code=400,
-            detail="Please provide symptoms."
+            detail="Please provide symptoms.",
         )
 
-    # SAFETY CHECK
-    safety = build_safety_context(request.symptoms)
-
-    # MATCH SYMPTOMS
-    matched_symptoms = extract_symptoms(
-        request.symptoms,
-        available_symptoms
+    safety = build_safety_context(
+        request.symptoms
     )
 
-    # EMERGENCY — deterministic response
+    matched_symptoms = extract_symptoms(
+        request.symptoms,
+        available_symptoms,
+    )
+
     if safety.get("is_emergency"):
+
         health_response = build_health_response(
             request.symptoms,
             matched_symptoms,
             {},
-            safety
+            safety,
         )
 
         return {
@@ -520,26 +519,24 @@ def analyze_symptoms(request: SymptomRequest):
             ),
         }
 
-    # FUSION MODEL + LOCAL RAG + OLLAMA
     if FUSION_LOADED and matched_symptoms:
-        predictions = predict_disease(matched_symptoms)
+
+        predictions = predict_disease(
+            matched_symptoms
+        )
 
         if predictions:
+
             top_prediction = predictions[0]
+
             condition = top_prediction.get("disease")
             confidence = top_prediction.get("confidence")
 
-            # ------------------------------------------------
-            # LOCAL RAG
-            # ------------------------------------------------
             rag_context = retrieve_knowledge(
                 request.symptoms,
-                top_k=3
+                top_k=3,
             )
 
-            # ------------------------------------------------
-            # OLLAMA RESPONSE GENERATION
-            # ------------------------------------------------
             application_data = {
                 "prediction": {
                     "condition": condition,
@@ -552,7 +549,7 @@ def analyze_symptoms(request: SymptomRequest):
 
             health_response = generate_health_response(
                 request.symptoms,
-                application_data
+                application_data,
             )
 
             return {
@@ -572,12 +569,10 @@ def analyze_symptoms(request: SymptomRequest):
                 "health_response": health_response,
                 "disclaimer": (
                     "This is an AI-based informational "
-                    "screening-support result, not a "
-                    "medical diagnosis."
+                    "screening-support result, not a medical diagnosis."
                 ),
             }
 
-    # RULE-BASED FALLBACK
     rule_result = analyze_rule_based_symptoms(
         matched_symptoms
     )
@@ -586,7 +581,7 @@ def analyze_symptoms(request: SymptomRequest):
         request.symptoms,
         matched_symptoms,
         {},
-        safety
+        safety,
     )
 
     return {
@@ -598,6 +593,8 @@ def analyze_symptoms(request: SymptomRequest):
         "health_response": health_response,
         "disclaimer": rule_result["disclaimer"],
     }
+
+
 # ============================================================
 # MENTAL HEALTH QUESTIONS
 # ============================================================
@@ -623,7 +620,7 @@ def mental_health_questions():
 
 @app.post("/mental-health-assessment")
 def mental_health_assessment(
-    request: MentalHealthRequest
+    request: MentalHealthRequest,
 ):
 
     try:
@@ -638,7 +635,7 @@ def mental_health_assessment(
 
         raise HTTPException(
             status_code=400,
-            detail=str(error)
+            detail=str(error),
         )
 
 
@@ -649,13 +646,11 @@ def mental_health_assessment(
 @app.post("/register")
 def register_user(
     request: RegisterRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
 
-    # Normalize email
     email = request.email.strip().lower()
 
-    # Check existing user
     existing_user = (
         db.query(User)
         .filter(User.email == email)
@@ -666,15 +661,13 @@ def register_user(
 
         raise HTTPException(
             status_code=409,
-            detail="Email already registered."
+            detail="Email already registered.",
         )
 
-    # Hash password
     hashed_password = pwd_context.hash(
         request.password
     )
 
-    # Create user
     user = User(
         name=request.name.strip(),
         email=email,
@@ -703,12 +696,11 @@ def register_user(
 @app.post("/login")
 def login_user(
     request: LoginRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
 
     email = request.email.strip().lower()
 
-    # Find user
     user = (
         db.query(User)
         .filter(User.email == email)
@@ -719,18 +711,17 @@ def login_user(
 
         raise HTTPException(
             status_code=401,
-            detail="Invalid email or password."
+            detail="Invalid email or password.",
         )
 
-    # Verify password
     if not pwd_context.verify(
         request.password,
-        user.password_hash
+        user.password_hash,
     ):
 
         raise HTTPException(
             status_code=401,
-            detail="Invalid email or password."
+            detail="Invalid email or password.",
         )
 
     return {
@@ -742,10 +733,3 @@ def login_user(
             "email": user.email,
         },
     }
-
-
-
-
-
-
-
